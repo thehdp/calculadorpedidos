@@ -13,28 +13,6 @@
     <link rel="icon" href="https://placehold.co/16x16/28a745/ffffff?text=Fav" type="image/png">
     <link rel="icon" href="https://placehold.co/32x32/28a745/ffffff?text=Fav" type="image/png">
     <link rel="apple-touch-icon" href="https://placehold.co/180x180/28a745/ffffff?text=Apple">
-    <!-- 
-      Contenido del site.webmanifest (crea este archivo en tu raíz):
-      {
-        "name": "Verificador de Precios Mayoristas",
-        "short_name": "PreciosApp",
-        "icons": [
-          {
-            "src": "/images/android-chrome-192x192.png", // Reemplaza con tu ruta
-            "sizes": "192x192",
-            "type": "image/png"
-          },
-          {
-            "src": "/images/android-chrome-512x512.png", // Reemplaza con tu ruta
-            "sizes": "512x512",
-            "type": "image/png"
-          }
-        ],
-        "theme_color": "#1e1e1e",
-        "background_color": "#121212",
-        "display": "standalone"
-      }
-    -->
     <link rel="manifest" href="site.webmanifest"> <!-- Asegúrate que este archivo exista -->
     <meta name="theme-color" content="#1e1e1e">
 
@@ -54,7 +32,6 @@
         ::-webkit-scrollbar-thumb:hover {
             background: #28a745;
         }
-        /* Estilo para el cuerpo para asegurar que el contenido no se corte en pantallas pequeñas */
         body {
             font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
         }
@@ -99,8 +76,22 @@
         <div class="results-section mt-8">
             <h2 class="text-2xl font-semibold text-white mb-4">Resultados</h2>
             <div id="results" class="results-table-container bg-gray-700 rounded-lg shadow-lg overflow-hidden">
-                <!-- La tabla se insertará aquí por JavaScript -->
                 <p class="p-4 text-gray-400">Los resultados aparecerán aquí después de procesar.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para ingresar precio de producto no encontrado -->
+    <div id="pricePromptModal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50 hidden">
+        <div class="bg-gray-800 p-6 rounded-lg shadow-xl w-full max-w-sm mx-4">
+            <h3 class="text-lg font-semibold text-white mb-2">Producto no encontrado en CSV</h3>
+            <p class="text-sm text-gray-300 mb-1">No se encontró: "<span id="modalProductName" class="font-semibold text-yellow-400"></span>".</p>
+            <p class="text-sm text-gray-300 mb-4">Ingresa el precio unitario para incluirlo en el cálculo, o presiona "Omitir".</p>
+            <label for="modalProductPrice" class="block text-sm font-medium text-gray-400 mb-1">Precio Unitario (ARS):</label>
+            <input type="number" id="modalProductPrice" step="0.01" min="0" placeholder="Ej: 1250.50" class="w-full p-2 bg-gray-700 text-gray-200 border border-gray-600 rounded-md focus:ring-2 focus:ring-green-500 focus:border-green-500">
+            <div class="mt-6 flex justify-end space-x-3">
+                <button id="modalSkipBtn" class="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white text-sm font-medium rounded-md transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-gray-500">Omitir</button>
+                <button id="modalSubmitBtn" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-md transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-green-500">Aceptar</button>
             </div>
         </div>
     </div>
@@ -112,27 +103,21 @@
     </footer>
 
     <script>
-        // --- INICIO DEL CÓDIGO JAVASCRIPT (app.js) ---
-        let csvData = []; // Almacena los datos del CSV parseado
+        // --- INICIO DEL CÓDIGO JAVASCRIPT ---
+        let csvData = []; 
 
-        // Event Listeners cuando el DOM está completamente cargado
         document.addEventListener("DOMContentLoaded", () => {
             document.getElementById("csvFile").addEventListener("change", handleCSVUpload);
             document.getElementById("processBtn").addEventListener("click", processData);
             document.getElementById("currentYear").textContent = new Date().getFullYear();
         });
 
-        /**
-         * Maneja la subida del archivo CSV.
-         * @param {Event} e - El evento de cambio del input file.
-         */
         function handleCSVUpload(e) {
             const file = e.target.files[0];
             if (!file) {
                 showStatus("No se seleccionó ningún archivo.", "error");
                 return;
             }
-
             const reader = new FileReader();
             reader.onload = function (event) {
                 try {
@@ -140,79 +125,53 @@
                     if (csvData.length > 0) {
                         showStatus(`CSV cargado: ${csvData.length} productos encontrados.`, "success");
                     } else {
-                        showStatus("El CSV está vacío o no tiene el formato esperado.", "error");
+                        showStatus("El CSV está vacío o no tiene el formato esperado.", "error", false); // No ocultar este error
                     }
                 } catch (error) {
                     console.error("Error al parsear CSV:", error);
-                    showStatus(`Error en CSV: ${error.message}`, "error");
-                    csvData = []; // Resetea en caso de error
+                    showStatus(`Error en CSV: ${error.message}`, "error", false); // No ocultar este error
+                    csvData = [];
                 }
             };
             reader.onerror = function() {
                 console.error("Error al leer el archivo CSV.");
-                showStatus("Error al leer el archivo. Intenta de nuevo.", "error");
+                showStatus("Error al leer el archivo. Intenta de nuevo.", "error", false); // No ocultar este error
                 csvData = [];
             };
-            reader.readAsText(file, 'ISO-8859-1'); // Se usa ISO-8859-1 para compatibilidad con caracteres latinos
+            reader.readAsText(file, 'ISO-8859-1');
         }
 
-        /**
-         * Parsea el contenido de texto de un archivo CSV.
-         * Asume que el CSV tiene cabecera, usa ';' como delimitador.
-         * El nombre del producto está en la columna 2 (índice 1).
-         * El precio está en la columna 9 (índice 8).
-         * @param {string} text - El contenido del archivo CSV.
-         * @returns {Array<Object>} Un array de objetos, cada uno representando un producto.
-         * @throws {Error} Si el formato del CSV es incorrecto.
-         */
         function parseCSV(text) {
-            const lines = text.split(/\r\n|\n/); // Maneja saltos de línea Windows y Unix
-            
-            // Omitir la cabecera (primera línea) y filtrar líneas vacías
+            const lines = text.split(/\r\n|\n/);
             return lines.slice(1) 
                 .filter(line => line.trim() !== "")
                 .map((line, index) => {
                     const parts = line.split(";");
-                    // Se esperan al menos 9 columnas (índices 0 a 8)
                     if (parts.length < 9) {
                         throw new Error(`Línea ${index + 2}: Formato CSV incorrecto. Se esperan al menos 9 columnas, se encontraron ${parts.length}.`);
                     }
-
                     const nombre = parts[1] ? parts[1].trim() : `Producto Desconocido ${index + 1}`;
                     const precioStr = parts[8] ? parts[8].trim() : "0";
-                    
-                    // Limpieza y conversión del precio
-                    // Elimina caracteres no numéricos excepto comas, puntos y signo menos.
-                    // Reemplaza el punto como separador de miles (si existe antes de una coma decimal) por nada.
-                    // Reemplaza la coma decimal por un punto.
                     const precioNumerico = parseFloat(
-                        precioStr
-                            .replace(/[^\d,.-]/g, "")    // Conserva dígitos, coma, punto y guion
-                            .replace(/\.(?=\d{3}(?:,|$))/g, "") // Elimina puntos de miles
-                            .replace(",", ".")           // Coma decimal a punto
+                        precioStr.replace(/[^\d,.-]/g, "").replace(/\.(?=\d{3}(?:,|$))/g, "").replace(",", ".")
                     );
-
                     if (isNaN(precioNumerico)) {
                          console.warn(`Línea ${index + 2}: Precio no válido para "${nombre}". Se usará 0.`);
                          return { nombre, precio: 0 };
                     }
-
                     return { nombre, precio: precioNumerico };
                 });
         }
 
-        /**
-         * Procesa los datos ingresados por el usuario y los compara con el CSV.
-         */
-        function processData() {
+        // Convert processData to an async function to handle await for user input
+        async function processData() {
             if (csvData.length === 0) {
-                showStatus("Por favor, carga un archivo CSV primero.", "error");
+                showStatus("Por favor, carga un archivo CSV primero.", "error", false);
                 return;
             }
-
             const productListInput = document.getElementById("productList").value || "";
             if (!productListInput.trim()) {
-                showStatus("Por favor, ingresa una lista de productos.", "warning");
+                showStatus("Por favor, ingresa una lista de productos.", "warning", false);
                 document.getElementById("results").innerHTML = '<p class="p-4 text-gray-400">Ingresa productos en el área de texto para calcular.</p>';
                 return;
             }
@@ -220,42 +179,110 @@
             const productsToVerify = parseProductListInput(productListInput);
             const results = [];
             let totalGeneral = 0;
-            const missingProducts = [];
-            const foundProductsLog = [];
+            const productsSkipped = [];
 
-            productsToVerify.forEach(product => {
-                const bestMatch = findBestMatch(product.name, csvData);
-                if (bestMatch) {
-                    const subtotal = product.quantity * bestMatch.precio;
-                    totalGeneral += subtotal;
-                    results.push({
-                        name: product.name, // Nombre original del input
-                        matchedName: bestMatch.nombre, // Nombre del CSV
-                        quantity: product.quantity,
-                        precio: bestMatch.precio,
-                        subtotal: subtotal
-                    });
-                    foundProductsLog.push(`'${product.name}' encontrado como '${bestMatch.nombre}' (Score: ${bestMatch.score.toFixed(2)})`);
-                } else {
-                    missingProducts.push(product.name);
+            for (const product of productsToVerify) { // Use for...of for async iteration
+                let bestMatch = findBestMatch(product.name, csvData);
+                let manualPriceEntered = false;
+
+                if (!bestMatch) {
+                    const userPriceData = await showPricePrompt(product.name, product.quantity);
+                    if (userPriceData && typeof userPriceData.price === 'number' && userPriceData.price >= 0) {
+                        bestMatch = { 
+                            nombre: `${product.name}`, // Usar el nombre original
+                            precio: userPriceData.price,
+                            // score no es aplicable aquí o podría ser 1 si se considera un match exacto por entrada manual
+                        };
+                        manualPriceEntered = true;
+                    } else {
+                        productsSkipped.push(product.name);
+                        continue; // Skip this product and go to the next one
+                    }
                 }
-            });
-            
-            if (foundProductsLog.length > 0) console.log("Productos encontrados y su matching:", foundProductsLog);
-            if (missingProducts.length > 0) console.warn("Productos no encontrados en CSV:", missingProducts);
 
-            displayResults(results, totalGeneral, missingProducts);
+                const subtotal = product.quantity * bestMatch.precio;
+                totalGeneral += subtotal;
+                results.push({
+                    name: product.name,
+                    matchedName: bestMatch.nombre,
+                    quantity: product.quantity,
+                    precio: bestMatch.precio,
+                    subtotal: subtotal,
+                    isManualPrice: manualPriceEntered 
+                });
+            }
+            
+            displayResults(results, totalGeneral, productsSkipped);
+        }
+        
+        function showPricePrompt(productName, quantity) {
+            return new Promise((resolve) => {
+                const modal = document.getElementById('pricePromptModal');
+                const nameEl = document.getElementById('modalProductName');
+                const priceInputEl = document.getElementById('modalProductPrice');
+                const skipBtn = document.getElementById('modalSkipBtn');
+                const submitBtn = document.getElementById('modalSubmitBtn');
+
+                nameEl.textContent = productName;
+                priceInputEl.value = ''; 
+                modal.classList.remove('hidden');
+                priceInputEl.focus(); // Focus on the input field
+
+                let submitted = false; // Flag to prevent multiple resolves
+
+                const cleanupAndResolve = (value) => {
+                    if (submitted) return;
+                    submitted = true;
+                    modal.classList.add('hidden');
+                    // Remove event listeners to prevent memory leaks
+                    submitBtn.removeEventListener('click', handleSubmitClick);
+                    skipBtn.removeEventListener('click', handleSkipClick);
+                    priceInputEl.removeEventListener('keydown', handleKeydown);
+                    document.removeEventListener('keydown', handleGlobalEsc);
+                    resolve(value);
+                };
+                
+                const handleSubmitClick = () => {
+                    const price = parseFloat(priceInputEl.value);
+                    if (!isNaN(price) && price >= 0) {
+                        cleanupAndResolve({ price, quantity, name: productName });
+                    } else if (priceInputEl.value.trim() === "") { // Consider empty as skip
+                        cleanupAndResolve(null);
+                    } else {
+                        // Optional: Show an inline error in the modal if the price is invalid
+                        priceInputEl.classList.add('border-red-500');
+                        setTimeout(() => priceInputEl.classList.remove('border-red-500'), 2000);
+                    }
+                };
+
+                const handleSkipClick = () => {
+                    cleanupAndResolve(null);
+                };
+
+                const handleKeydown = (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault(); // Prevent form submission if it were in a form
+                        handleSubmitClick();
+                    }
+                };
+                
+                const handleGlobalEsc = (e) => {
+                    if (e.key === 'Escape') {
+                        handleSkipClick();
+                    }
+                };
+
+                // Add event listeners
+                submitBtn.addEventListener('click', handleSubmitClick);
+                skipBtn.addEventListener('click', handleSkipClick);
+                priceInputEl.addEventListener('keydown', handleKeydown);
+                document.addEventListener('keydown', handleGlobalEsc); // Listen for Escape globally when modal is open
+            });
         }
 
-        /**
-         * Parsea la lista de productos ingresada en el textarea.
-         * Formato esperado por línea: NombreProducto, luego 'x', luego Cantidad.
-         * @param {string} input - El texto del textarea.
-         * @returns {Array<Object>} Lista de productos con nombre y cantidad.
-         */
+
         function parseProductListInput(input) {
             if (!input.trim()) return [];
-
             const lines = input.split("\n").map(line => line.trim()).filter(line => line);
             const products = [];
             let i = 0;
@@ -265,16 +292,12 @@
                     const quantityStr = lines[i+2];
                     const quantity = parseQuantity(quantityStr);
                     products.push({ name: productName, quantity: quantity });
-                    i += 3; // Avanza al siguiente producto
+                    i += 3; 
                 } else if (i + 1 < lines.length && lines[i+1].toLowerCase() === 'x') {
-                    // Caso de error o formato incompleto, se omite este producto
                     console.warn(`Formato incorrecto para producto "${productName}", falta cantidad después de 'x'.`);
                     i += 2; 
                 }
                 else {
-                    // Si no sigue el patrón, podría ser un nombre de producto solo (asumir cantidad 1)
-                    // O simplemente avanzar para evitar bucles infinitos si el formato es muy distinto
-                    // Por ahora, para ser estrictos con el formato "nombre \n x \n cantidad", lo ignoramos si no cumple.
                     console.warn(`Línea '${productName}' no sigue el formato esperado (nombre, x, cantidad). Se omite.`);
                     i++;
                 }
@@ -282,32 +305,18 @@
             return products;
         }
 
-        /**
-         * Parsea la cantidad de una línea de texto.
-         * @param {string} line - La línea que contiene la cantidad (ej: "1 un.").
-         * @returns {number} La cantidad parseada, o 1 si no se puede parsear.
-         */
         function parseQuantity(line) {
-            const quantityMatch = line.match(/\d+/); // Extrae el primer número
+            const quantityMatch = line.match(/\d+/);
             const quantity = quantityMatch ? parseInt(quantityMatch[0], 10) : 1;
             return quantity > 0 ? quantity : 1;
         }
 
-        /**
-         * Encuentra la mejor coincidencia para un término de búsqueda en los datos del CSV.
-         * Utiliza el algoritmo de Levenshtein para calcular la similitud.
-         * @param {string} searchTerm - El nombre del producto a buscar.
-         * @param {Array<Object>} data - El array de productos del CSV.
-         * @returns {Object|null} El producto con mejor coincidencia o null si no hay buena coincidencia.
-         */
         function findBestMatch(searchTerm, data) {
             if (!data || data.length === 0) return null;
-
             const normalizedSearchTerm = searchTerm.toLowerCase();
             let bestMatch = { score: 0, product: null };
-
             data.forEach(item => {
-                if (item.nombre) { // Asegurarse que el item tiene un nombre
+                if (item.nombre) {
                     const normalizedItemName = item.nombre.toLowerCase();
                     const score = calculateSimilarity(normalizedSearchTerm, normalizedItemName);
                     if (score > bestMatch.score) {
@@ -315,19 +324,9 @@
                     }
                 }
             });
-            
-            // Umbral de similitud (ajustar según sea necesario)
-            // Un score > 0.6 suele ser una coincidencia razonable.
-            // El original era 0.3, que puede ser muy bajo y dar falsos positivos.
             return bestMatch.score > 0.5 ? { ...bestMatch.product, score: bestMatch.score } : null; 
         }
 
-        /**
-         * Calcula la similitud entre dos strings usando la distancia de Levenshtein.
-         * @param {string} s1 - Primera string.
-         * @param {string} s2 - Segunda string.
-         * @returns {number} Un valor entre 0 (diferentes) y 1 (iguales).
-         */
         function calculateSimilarity(s1, s2) {
             let longer = s1;
             let shorter = s2;
@@ -336,79 +335,49 @@
                 shorter = s1;
             }
             const longerLength = longer.length;
-            if (longerLength === 0) {
-                return 1.0;
-            }
+            if (longerLength === 0) return 1.0;
             const distance = levenshteinDistance(longer, shorter);
             return (longerLength - distance) / parseFloat(longerLength);
         }
         
-        /**
-         * Implementación del algoritmo de distancia de Levenshtein.
-         */
         function levenshteinDistance(a, b) {
-            const matrix = [];
-
-            for (let i = 0; i <= b.length; i++) {
-                matrix[i] = [i];
-            }
-
-            for (let j = 0; j <= a.length; j++) {
-                matrix[0][j] = j;
-            }
-
-            for (let i = 1; i <= b.length; i++) {
-                for (let j = 1; j <= a.length; j++) {
-                    if (b.charAt(i - 1) === a.charAt(j - 1)) {
-                        matrix[i][j] = matrix[i - 1][j - 1];
-                    } else {
-                        matrix[i][j] = Math.min(
-                            matrix[i - 1][j - 1] + 1, // Sustitución
-                            matrix[i][j - 1] + 1,     // Inserción
-                            matrix[i - 1][j] + 1      // Borrado
-                        );
-                    }
+            const matrix = Array(b.length + 1).fill(null).map(() => Array(a.length + 1).fill(null));
+            for (let i = 0; i <= a.length; i += 1) matrix[0][i] = i;
+            for (let j = 0; j <= b.length; j += 1) matrix[j][0] = j;
+            for (let j = 1; j <= b.length; j += 1) {
+                for (let i = 1; i <= a.length; i += 1) {
+                    const indicator = a[i - 1] === b[j - 1] ? 0 : 1;
+                    matrix[j][i] = Math.min(
+                        matrix[j][i - 1] + 1, 
+                        matrix[j - 1][i] + 1, 
+                        matrix[j - 1][i - 1] + indicator, 
+                    );
                 }
             }
             return matrix[b.length][a.length];
         }
 
-
-        /**
-         * Muestra los resultados en la tabla HTML.
-         * @param {Array<Object>} results - Productos encontrados y sus precios.
-         * @param {number} total - El total general calculado.
-         * @param {Array<string>} missingProducts - Nombres de productos no encontrados.
-         */
-        function displayResults(results, total, missingProducts) {
+        function displayResults(results, total, productsSkipped) {
             const container = document.getElementById("results");
-            container.innerHTML = ""; // Limpiar resultados anteriores
+            container.innerHTML = ""; 
 
-            // Función para formatear números al estilo argentino
             const formatoArgentino = (numero) => {
                 if (typeof numero !== 'number' || isNaN(numero)) return 'N/A';
-                return numero.toLocaleString('es-AR', {
-                    style: 'currency',
-                    currency: 'ARS',
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2
-                });
+                return numero.toLocaleString('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 2, maximumFractionDigits: 2 });
             };
 
-            if (results.length === 0 && missingProducts.length === 0) {
+            if (results.length === 0 && productsSkipped.length === 0) {
                 container.innerHTML = `<p class="p-4 text-gray-400">No se ingresaron productos o no se encontraron coincidencias.</p>`;
                 return;
             }
             
-            // Se añade table-layout: fixed y w-full a la tabla para mejor control de anchos
-            // Se usa overflow-x-auto en el div contenedor para manejar el desbordamiento si aún ocurre
             let tableHTML = `
                 <div class="overflow-x-auto rounded-lg"> 
                     <table class="min-w-full w-full table-fixed divide-y divide-gray-600">
                         <thead class="bg-gray-750">
                             <tr>
                                 <th scope="col" class="w-2/6 px-4 py-3 text-left text-xs font-medium text-green-400 uppercase tracking-wider">Producto (Input)</th>
-                                <th scope="col" class="w-2/6 px-4 py-3 text-left text-xs font-medium text-green-400 uppercase tracking-wider">Producto (CSV)</th>
+                                <th scope="col" class="w-2/6 px-4 py-3 text-left text-xs font-medium text-green-400 uppercase tracking-wider">Producto (Encontrado/Manual)</th>
                                 <th scope="col" class="w-1/12 px-4 py-3 text-left text-xs font-medium text-green-400 uppercase tracking-wider">Cant.</th>
                                 <th scope="col" class="w-1/6 px-4 py-3 text-left text-xs font-medium text-green-400 uppercase tracking-wider">Precio Unit.</th>
                                 <th scope="col" class="w-1/6 px-4 py-3 text-left text-xs font-medium text-green-400 uppercase tracking-wider">Subtotal</th>
@@ -418,18 +387,19 @@
 
             if (results.length > 0) {
                 results.forEach(item => {
-                    // Se cambia whitespace-nowrap a whitespace-normal y se añade break-words para las celdas de nombres
+                    const manualPriceClass = item.isManualPrice ? 'italic text-yellow-400' : '';
+                    const matchedNameDisplay = item.isManualPrice ? `${item.matchedName} (Manual)` : item.matchedName;
                     tableHTML += `
                         <tr class="hover:bg-gray-600 transition-colors duration-150">
                             <td class="px-4 py-3 text-sm text-gray-300 whitespace-normal break-words">${item.name}</td>
-                            <td class="px-4 py-3 text-sm text-gray-300 whitespace-normal break-words">${item.matchedName}</td>
+                            <td class="px-4 py-3 text-sm text-gray-300 whitespace-normal break-words ${manualPriceClass}">${matchedNameDisplay}</td>
                             <td class="px-4 py-3 text-sm text-gray-300 text-center">${item.quantity}</td>
                             <td class="px-4 py-3 text-sm text-gray-300 text-right whitespace-nowrap">${formatoArgentino(item.precio)}</td>
                             <td class="px-4 py-3 text-sm text-gray-300 text-right whitespace-nowrap">${formatoArgentino(item.subtotal)}</td>
                         </tr>`;
                 });
             } else {
-                tableHTML += `<tr><td colspan="5" class="px-4 py-3 text-center text-gray-400">No se encontraron productos coincidentes en el CSV.</td></tr>`;
+                tableHTML += `<tr><td colspan="5" class="px-4 py-3 text-center text-gray-400">No se procesaron productos para la tabla.</td></tr>`;
             }
 
             tableHTML += `
@@ -441,33 +411,28 @@
                             </tr>
                         </tfoot>
                     </table>
-                </div>`; // Cierre del div con overflow-x-auto
+                </div>`; 
             
             container.innerHTML = tableHTML;
 
-            if (missingProducts.length > 0) {
+            if (productsSkipped.length > 0) {
                 const missingHTML = `
-                    <div class="mt-6 p-4 bg-red-900 border border-red-700 rounded-md">
-                        <h4 class="font-semibold text-red-300">Productos no encontrados en el CSV:</h4>
-                        <ul class="list-disc list-inside text-red-400 text-sm mt-2">
-                            ${missingProducts.map(name => `<li>${name}</li>`).join("")}
+                    <div class="mt-6 p-4 bg-yellow-900 bg-opacity-30 border border-yellow-700 rounded-md">
+                        <h4 class="font-semibold text-yellow-300">Productos omitidos (no se ingresó precio):</h4>
+                        <ul class="list-disc list-inside text-yellow-400 text-sm mt-2">
+                            ${productsSkipped.map(name => `<li>${name}</li>`).join("")}
                         </ul>
                     </div>`;
                 container.innerHTML += missingHTML;
             }
         }
 
-        /**
-         * Muestra un mensaje de estado al usuario.
-         * @param {string} message - El mensaje a mostrar.
-         * @param {"success"|"error"|"warning"} type - El tipo de mensaje.
-         */
-        function showStatus(message, type) {
+        function showStatus(message, type, autoHide = true) { // autoHide es true por defecto
             const statusElement = document.getElementById("csvStatus");
             if (!statusElement) return;
 
             statusElement.textContent = message;
-            statusElement.className = 'status-message text-sm mt-2 p-3 rounded-md'; // Reset classes
+            statusElement.className = 'status-message text-sm mt-2 p-3 rounded-md'; 
 
             switch (type) {
                 case "success":
@@ -484,13 +449,13 @@
             }
             statusElement.classList.add("opacity-100", "visible");
 
-            // Ocultar mensaje después de 5 segundos
-            setTimeout(() => {
-                statusElement.classList.remove("opacity-100", "visible");
-                statusElement.classList.add("opacity-0"); // Para transición suave si se añade CSS
-            }, 5000);
+            if (autoHide) { // Solo ocultar si autoHide es true
+                 setTimeout(() => {
+                     statusElement.classList.remove("opacity-100", "visible");
+                     statusElement.classList.add("opacity-0"); 
+                 }, 5000);
+            }
         }
-
         // --- FIN DEL CÓDIGO JAVASCRIPT ---
     </script>
 </body>
